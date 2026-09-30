@@ -28,6 +28,56 @@ header h1 {
   margin-bottom: 10px;
 }
 
+#auth-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+#login-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  width: min(100%, 760px);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  text-align: left;
+}
+
+#login-form.hidden,
+#teacher-session.hidden {
+  display: none;
+}
+
+#login-form .form-group {
+  margin-bottom: 0;
+}
+
+#login-form label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+#login-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+#teacher-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 main {
   display: flex;
   flex-wrap: wrap;
@@ -197,4 +247,14 @@ footer {
   margin-top: 30px;
   padding: 20px;
   color: #666;
+}
+
+@media (max-width: 640px) {
+  #login-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #login-form button {
+    width: 100%;
+  }
 }

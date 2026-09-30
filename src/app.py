@@ -5,14 +5,41 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+import os
+import secrets
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-import os
-from pathlib import Path
+from pydantic import BaseModel
+
+from teacher_auth import TEACHERS_FILE, load_teacher_credentials, verify_password
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET") or secrets.token_urlsafe(32),
+    max_age=8 * 60 * 60,
+    same_site="lax",
+    https_only=os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true"},
+)
+
+teacher_credentials = load_teacher_credentials(TEACHERS_FILE)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def require_teacher(request: Request) -> str:
+    username = request.session.get("teacher")
+    if username not in teacher_credentials:
+        raise HTTPException(status_code=401, detail="Teacher login required")
+    return username
 
 # Mount the static files directory
 current_dir = Path(__file__).parent
@@ -88,8 +115,36 @@ def get_activities():
     return activities
 
 
+@app.get("/auth/status")
+def get_auth_status(request: Request):
+    username = request.session.get("teacher")
+    if username not in teacher_credentials:
+        return {"authenticated": False}
+    return {"authenticated": True, "username": username}
+
+
+@app.post("/auth/login")
+def login(credentials: LoginRequest, request: Request):
+    teacher = teacher_credentials.get(credentials.username)
+    if teacher is None or not verify_password(credentials.password, teacher):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    request.session["teacher"] = credentials.username
+    return {"authenticated": True, "username": credentials.username}
+
+
+@app.post("/auth/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"authenticated": False}
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(
+    activity_name: str,
+    email: str,
+    _teacher: str = Depends(require_teacher),
+):
     """Sign up a student for an activity"""
     # Validate activity exists
     if activity_name not in activities:
@@ -111,7 +166,11 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(
+    activity_name: str,
+    email: str,
+    _teacher: str = Depends(require_teacher),
+):
     """Unregister a student from an activity"""
     # Validate activity exists
     if activity_name not in activities:

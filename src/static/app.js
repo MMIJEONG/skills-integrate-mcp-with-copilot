@@ -3,6 +3,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const signupContainer = document.getElementById("signup-container");
+  const loginToggle = document.getElementById("login-toggle");
+  const loginForm = document.getElementById("login-form");
+  const teacherSession = document.getElementById("teacher-session");
+  const teacherName = document.getElementById("teacher-name");
+  const logoutButton = document.getElementById("logout-button");
+  let isTeacher = false;
+
+  function updateAuthUI(auth) {
+    isTeacher = Boolean(auth.authenticated);
+    signupContainer.classList.toggle("hidden", !isTeacher);
+    loginToggle.classList.toggle("hidden", isTeacher);
+    loginForm.classList.add("hidden");
+    teacherSession.classList.toggle("hidden", !isTeacher);
+    teacherName.textContent = auth.username || "";
+    loginToggle.setAttribute("aria-expanded", "false");
+  }
+
+  async function fetchAuthStatus() {
+    try {
+      const response = await fetch("/auth/status");
+      updateAuthUI(response.ok ? await response.json() : { authenticated: false });
+    } catch (error) {
+      updateAuthUI({ authenticated: false });
+      console.error("Error checking teacher login:", error);
+    }
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -30,7 +58,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${
+                        isTeacher
+                          ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Unregister ${email}">Remove</button>`
+                          : ""
+                      }</li>`
                   )
                   .join("")}
               </ul>
@@ -66,6 +98,68 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  loginToggle.addEventListener("click", () => {
+    const isExpanded = loginToggle.getAttribute("aria-expanded") === "true";
+    loginForm.classList.toggle("hidden", isExpanded);
+    loginToggle.setAttribute("aria-expanded", String(!isExpanded));
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(loginForm);
+
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: formData.get("username"),
+          password: formData.get("password"),
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        messageDiv.textContent = result.detail || "Unable to log in";
+        messageDiv.className = "error";
+        messageDiv.classList.remove("hidden");
+        return;
+      }
+
+      updateAuthUI(result);
+      loginForm.reset();
+      await fetchActivities();
+      messageDiv.textContent = "Teacher login successful";
+      messageDiv.className = "success";
+      messageDiv.classList.remove("hidden");
+    } catch (error) {
+      messageDiv.textContent = "Failed to log in. Please try again.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error logging in:", error);
+    }
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    try {
+      const response = await fetch("/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Unable to log out");
+      }
+
+      updateAuthUI({ authenticated: false });
+      await fetchActivities();
+      messageDiv.textContent = "Logged out";
+      messageDiv.className = "success";
+      messageDiv.classList.remove("hidden");
+    } catch (error) {
+      messageDiv.textContent = "Failed to log out. Please try again.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error logging out:", error);
+    }
+  });
 
   // Handle unregister functionality
   async function handleUnregister(event) {
@@ -155,6 +249,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Initialize app
-  fetchActivities();
+  fetchAuthStatus().then(fetchActivities);
 });
